@@ -16,6 +16,8 @@ public:
 	/** Set the annotation color of an object */
 	FExecStatus SetObjectColor(const TArray<FString>& Args);
 	/** Get the name of an object */
+	FExecStatus SetObjectMoBility(const TArray<FString>& Args);
+	/** Get the name of an object */
 	FExecStatus GetObjectName(const TArray<FString>& Args);
 	/** Get the bounding box of an object */
 	FExecStatus GetObjectBoundingBox(const TArray<FString>& Args);

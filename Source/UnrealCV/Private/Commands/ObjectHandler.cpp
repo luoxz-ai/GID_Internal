@@ -29,6 +29,10 @@ void FObjectCommandHandler::RegisterCommands()
 	Help = "Set the labeling color of an object [r, g, b]";
 	CommandDispatcher->BindCommand(TEXT("vset /object/[str]/color [uint] [uint] [uint]"), Cmd, Help);
 
+	Cmd = FDispatcherDelegate::CreateRaw(this, &FObjectCommandHandler::SetObjectMoBility);
+	Help = "Set the labeling color of an object [r, g, b]";
+	CommandDispatcher->BindCommand(TEXT("vset /object/[str]/mobility [str]"), Cmd, Help);
+
 	Cmd = FDispatcherDelegate::CreateRaw(this, &FObjectCommandHandler::GetObjectName);
 	Help = "[debug] Get the object name";
 	CommandDispatcher->BindCommand(TEXT("vget /object/[str]/name"), Cmd, Help);
@@ -62,8 +66,19 @@ void FObjectCommandHandler::RegisterCommands()
 FExecStatus FObjectCommandHandler::HelloWorld(const TArray<FString>& Args)
 {
 	FString Msg;
-	Msg += "Hello World!";
+	FSHA1 SHATest;
+	uint8 Hash[FSHA1::DigestSize];
+	std::string Test= "abc";
+	SHATest.Update((uint8*)Test.c_str(), Test.size());
+	SHATest.Final();
+	SHATest.GetHash(Hash);
+	Msg = BytesToHex(Hash, FSHA1::DigestSize).ToLower();
+	//Temporary romove for now for checking adapability
+	//GID = GID.Left(8);
 	return FExecStatus::OK(Msg);
+	//Msg += "Hello World!";
+	return FExecStatus::OK(Msg);
+	//APointLight *pointlight = Cast<APointLight> (GE
 }
 FExecStatus FObjectCommandHandler::GetObjects(const TArray<FString>& Args)
 {
@@ -81,6 +96,48 @@ FExecStatus FObjectCommandHandler::SetObjectColor(const TArray<FString>& Args)
 		FColor NewColor(R, G, B, A);
 
 		return FObjectPainter::Get().SetActorColor(ObjectName, NewColor);
+	}
+
+	return FExecStatus::InvalidArgument;
+}
+FExecStatus FObjectCommandHandler::SetObjectMoBility(const TArray<FString>& Args)
+{
+	// ObjectName, R, G, B, A = 255
+	// The color format is RGBA
+	if (Args.Num() == 2)
+	{
+		FString ObjectName = Args[0];
+		FString Option = Args[1];
+		AActor* Object = FObjectPainter::Get().GetObject(ObjectName);
+		if (Object == NULL)
+		{
+			return FExecStatus::Error(FString::Printf(TEXT("Can not find object %s"), *ObjectName));
+		}
+		TArray<UMeshComponent*> PaintableComponents;
+		Object->GetComponents<UMeshComponent>(PaintableComponents);
+		for (auto MeshComponent : PaintableComponents)
+		{
+			if (UStaticMeshComponent* StaticMeshComponent = Cast<UStaticMeshComponent>(MeshComponent))
+			{
+				if (Option.ToLower() == "movable")
+				{
+					StaticMeshComponent->Mobility = EComponentMobility::Movable;
+				}
+				else if (Option.ToLower() == "static")
+				{
+					StaticMeshComponent->Mobility = EComponentMobility::Static;
+				}
+				else if (Option.ToLower() == "stationary")
+				{
+					StaticMeshComponent->Mobility = EComponentMobility::Stationary;
+				}
+				else
+				{
+					return FExecStatus::InvalidArgument;
+				}
+				return FExecStatus::OK(FString("Mobility set to: ") + Option);
+			}
+		}
 	}
 
 	return FExecStatus::InvalidArgument;
@@ -149,21 +206,21 @@ FExecStatus FObjectCommandHandler::GetObjectBoundingBox(const TArray<FString>& A
 						{
 							//World Coordinate
 							const FVector WorldSpaceVertexLocation = Object->GetActorLocation() + Object->GetTransform().TransformVector(VertexBuffer->VertexPosition(Index));
-							minX = std::fminf(minX, WorldSpaceVertexLocation.X);
-							minY = std::fminf(minY, WorldSpaceVertexLocation.Y);
-							minZ = std::fminf(minZ, WorldSpaceVertexLocation.Z);
-							maxX = std::fmaxf(maxX, WorldSpaceVertexLocation.X);
-							maxY = std::fmaxf(maxY, WorldSpaceVertexLocation.Y);
-							maxZ = std::fmaxf(maxZ, WorldSpaceVertexLocation.Z);
+							minX = fminf(minX, WorldSpaceVertexLocation.X);
+							minY = fminf(minY, WorldSpaceVertexLocation.Y);
+							minZ = fminf(minZ, WorldSpaceVertexLocation.Z);
+							maxX = fmaxf(maxX, WorldSpaceVertexLocation.X);
+							maxY = fmaxf(maxY, WorldSpaceVertexLocation.Y);
+							maxZ = fmaxf(maxZ, WorldSpaceVertexLocation.Z);
 						}
 
 					}
 				}
 			}
 		}
-		FString Output = "Min: " + FString::SanitizeFloat(minX) + " " + FString::SanitizeFloat(minY) + " " + FString::SanitizeFloat(minZ) + " " +
-			             "Max: " + FString::SanitizeFloat(maxX) + " " + FString::SanitizeFloat(maxY) + " " + FString::SanitizeFloat(maxZ);
-		return FExecStatus::OK(Output);
+		//FString Output = "Min: " + FString::SanitizeFloat(minX) + " " + FString::SanitizeFloat(minY) + " " + FString::SanitizeFloat(minZ) + " " +
+		//	             "Max: " + FString::SanitizeFloat(maxX) + " " + FString::SanitizeFloat(maxY) + " " + FString::SanitizeFloat(maxZ);
+		return FExecStatus::OK(FString::Printf(TEXT("Min: %.2f %.2f %.2f  Max:  %.2f %.2f %.2f"), minX, minY, minZ, maxX, maxY, maxZ));
 	}
 	return FExecStatus::InvalidArgument;
 }
@@ -171,6 +228,7 @@ FExecStatus FObjectCommandHandler::GetObjectBoundingBox(const TArray<FString>& A
 FExecStatus FObjectCommandHandler::GetObjectGID(const TArray<FString>& Args)
 
 {
+// Save information to file
 	if (Args.Num() == 1)
 	{
 		FSHA1 HashState;
@@ -182,6 +240,11 @@ FExecStatus FObjectCommandHandler::GetObjectGID(const TArray<FString>& Args)
 		{
 			return FExecStatus::Error(FString::Printf(TEXT("Can not find object %s"), *ObjectName));
 		}
+//Save information to file
+		FString SaveDirectory = FString("Objectdata/");
+		FString FileName = FString(ObjectName+".sav");
+		FString TextToSave = FString("");
+		IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
 		TArray<UMeshComponent*> PaintableComponents;
         Object->GetComponents<UMeshComponent>(PaintableComponents);
 		for (auto MeshComponent : PaintableComponents)
@@ -220,8 +283,8 @@ FExecStatus FObjectCommandHandler::GetObjectGID(const TArray<FString>& Args)
 					//UMaterialInstanceDynamic * Material = UMaterialInstanceDynamic::Create(StaticMeshComponent->GetMaterial(Materialindex),nullptr);
 					//FString MaterialName = Material->GetName();
 					FString MaterialName = StaticMeshComponent->GetMaterial(Materialindex)->GetName();
-					std::string MaterialConvert(TCHAR_TO_UTF8(*MaterialName));
-					HashState.Update((uint8*)MaterialConvert.c_str(), MaterialConvert.size());
+					//std::string MaterialConvert(TCHAR_TO_UTF8(*MaterialName));
+					//HashState.Update((uint8*)MaterialConvert.c_str(), MaterialConvert.size());
 				}
 				*/
 				//Hash the Vertex positions
@@ -241,7 +304,8 @@ FExecStatus FObjectCommandHandler::GetObjectGID(const TArray<FString>& Args)
 							//Local Coordinate
 							//const FVector LocalLocation = Object->GetTransform().TransformVector(VertexBuffer->VertexPosition(Index));
 							const FVector VPosition = VertexBuffer->VertexPosition(Index);
-							FString Combine = FString::SanitizeFloat(VPosition.X) + FString::SanitizeFloat(VPosition.Y) + FString::SanitizeFloat(VPosition.Z);
+							FString Combine = FString::FromInt(int(100 * VPosition.X)) + FString::FromInt(int(100 * VPosition.Y)) + FString::FromInt(int(100 * VPosition.Z));
+							TextToSave += FString::FromInt(int(100 * VPosition.X)) +" "+ FString::FromInt(int(100 * VPosition.Y)) + " "+FString::FromInt(int(100 * VPosition.Z)) +"\n";
 							std::string Convertstring(TCHAR_TO_UTF8(*Combine));
 							HashState.Update((uint8*)Convertstring.c_str(), Convertstring.size());
 						}
@@ -252,8 +316,15 @@ FExecStatus FObjectCommandHandler::GetObjectGID(const TArray<FString>& Args)
 		}
 		HashState.Final();
 		HashState.GetHash(Hash);
-		GID = BytesToHex(Hash, FSHA1::DigestSize);
-		GID = GID.Left(8);
+		if (PlatformFile.CreateDirectoryTree(*SaveDirectory))
+		{
+			// Get absolute file path
+			FString AbsoluteFilePath = SaveDirectory + "/" + FileName;
+			FFileHelper::SaveStringToFile(TextToSave, *AbsoluteFilePath);
+		}
+		GID =BytesToHex(Hash, FSHA1::DigestSize).ToLower();
+		//Temporary romove for now for checking adapability
+		//GID = GID.Left(8);
 		return FExecStatus::OK(GID);
 	}
 	return FExecStatus::InvalidArgument;
